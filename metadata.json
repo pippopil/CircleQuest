@@ -1,0 +1,6 @@
+{
+  "name": "CircleQuest — Закрытые квесты для друзей",
+  "description": "Безопасное пространство совместных офлайн-квестов для подростков и молодежи без лайков и давления соцсетей",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,65 @@
+name: Android Beta Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Build Android PWA Web App Bundle
+        run: npm run build
+
+      - name: Package Release Bundle
+        run: |
+          cd dist
+          zip -r ../circlequest-android-beta-build.zip .
+          cd ..
+
+      - name: Create GitHub Beta Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "CircleQuest Android Beta ${{ github.ref_name }} (Сборка #101)"
+          body: |
+            ## 📱 CircleQuest — Бета-релиз для тестирования на Android
+
+            - **Версия**: ${{ github.ref_name }}
+            - **Номер сборки**: #101
+            - **Целевая платформа**: Android (PWA / Chrome / Samsung Internet / TWA)
+
+            ### 🚀 Что включено в бета-версию:
+            - **PWA-манифест и Service Worker**: автономная работа, офлайн-кэширование квестов и шрифтов.
+            - **Инсталляция в 1 клик на рабочий стол Android**: запуск без адресной строки браузера как нативное приложение.
+            - **Квесты недели**: Синхрон, Твори добро (с фотоотчетами без лиц) и Детокс-таймер тишины с дыхательной анимацией.
+            - **Система поддержки «Искры»**: гармоничные звуковые стикеры на Web Audio API.
+            - **Безопасность и защита детей**: 2-кликовая модерация, возрастной контроль (согласие родителей <14 лет), тихий режим для учебы и сна.
+
+            ### 📲 Инструкция по тестированию на Android:
+            1. Откройте приложение в браузере Chrome или Яндекс на смартфоне.
+            2. Нажмите меню **(⋮)** -> **«Установить приложение»** / **«Добавить на главный экран»**.
+            3. Приложение установится на рабочий стол телефона с иконкой 🌿 и будет работать в полноэкранном режиме.
+          files: circlequest-android-beta-build.zip
+          prerelease: true

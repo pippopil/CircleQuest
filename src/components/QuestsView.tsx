@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Quest, QuestType } from '../types';
+import { AndroidInstallBanner } from './AndroidInstallBanner';
 import {
   Sun,
   HeartHandshake,
@@ -108,6 +109,9 @@ export const QuestsView: React.FC = () => {
 
   return (
     <div className="space-y-4 pb-20">
+      {/* Android Beta Mobile Install Prompt */}
+      <AndroidInstallBanner />
+
       {/* Team Progress Card (Anti-competition, team focus) */}
       <div className="bg-[#FAF8F3] border border-[#5B8266]/20 rounded-2xl p-4 shadow-xs">
         <div className="flex items-center justify-between gap-3 mb-2.5">

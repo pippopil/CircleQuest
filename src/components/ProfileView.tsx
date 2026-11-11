@@ -377,6 +377,43 @@ export const ProfileView: React.FC = () => {
         </div>
       </div>
 
+      {/* Android Beta Build & Test Information */}
+      <div className="bg-white border border-[#486B52]/30 rounded-2xl p-4 shadow-2xs space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-[#486B52] text-white flex items-center justify-center">
+              <Smartphone className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-bold text-stone-900">Бета-тестирование Android</h3>
+                <span className="text-[10px] bg-[#486B52]/15 text-[#2B4734] font-bold px-1.5 py-0.2 rounded-md">
+                  v1.0.0-beta.1
+                </span>
+              </div>
+              <p className="text-[11px] text-stone-500">
+                Номер сборки: <strong className="text-stone-800">#101</strong> · PWA / APK Ready
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-2.5 bg-[#FAF8F3] rounded-xl border border-stone-100 text-[11px] text-stone-600 space-y-1">
+          <div className="flex items-center justify-between">
+            <span>Платформа:</span>
+            <strong className="text-stone-900">Android (Chrome, Яндекс, Samsung)</strong>
+          </div>
+          <div className="flex items-center justify-between">
+            <span>Офлайн-кэширование:</span>
+            <span className="text-[#486B52] font-semibold">Активно (Service Worker)</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span>Канал обновлений:</span>
+            <span className="text-stone-700">GitHub Releases (main)</span>
+          </div>
+        </div>
+      </div>
+
       {/* Moderator Panel Launcher */}
       <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 flex items-center justify-between text-xs text-amber-900">
         <div className="flex items-center gap-2">

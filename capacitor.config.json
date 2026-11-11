@@ -1,0 +1,8 @@
+{
+  "appId": "com.circlequest.app",
+  "appName": "CircleQuest",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

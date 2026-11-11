@@ -18,6 +18,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Java JDK for Android
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 21
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -29,46 +35,65 @@ jobs:
       - name: Typecheck
         run: npm run lint
 
-      - name: Build Android PWA Web App Bundle
-        run: npm run build
+      - name: Build Web App & Sync Capacitor Android
+        run: |
+          npm run build
+          npx cap sync android
 
-      - name: Package Release Bundle
+      - name: Build Android APK (Debug / Beta)
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleDebug --no-daemon
+          cd ..
+          cp android/app/build/outputs/apk/debug/app-debug.apk ./circlequest-v1.0.0-beta.1-build101.apk
+
+      - name: Package Web Bundle
         run: |
           cd dist
           zip -r ../circlequest-android-beta-build.zip .
           cd ..
 
-      - name: Upload Android Beta Artifact
+      - name: Upload Android APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: circlequest-android-beta-build
+          name: circlequest-apk
+          path: circlequest-v1.0.0-beta.1-build101.apk
+          retention-days: 30
+
+      - name: Upload Web PWA Bundle Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: circlequest-pwa-bundle
           path: circlequest-android-beta-build.zip
           retention-days: 14
 
-      - name: Create GitHub Beta Release
+      - name: Create GitHub Beta Release with APK
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: "CircleQuest Android Beta ${{ github.ref_name }} (Сборка #101)"
+          name: "CircleQuest Android Beta ${{ github.ref_name }} (Сборка #101) APK"
           body: |
-            ## 📱 CircleQuest — Бета-релиз для тестирования на Android
+            ## 📱 CircleQuest — Бета-релиз APK для Android
 
             - **Версия**: ${{ github.ref_name }}
             - **Номер сборки**: #101
-            - **Целевая платформа**: Android (PWA / Chrome / Samsung Internet / TWA)
+            - **Файл установки**: `circlequest-v1.0.0-beta.1-build101.apk`
+            - **Целевая платформа**: Android 7.0+ (API 24+)
 
-            ### 🚀 Что включено в бета-версию:
-            - **PWA-манифест и Service Worker**: автономная работа, офлайн-кэширование квестов и шрифтов.
-            - **Инсталляция в 1 клик на рабочий стол Android**: запуск без адресной строки браузера как нативное приложение.
-            - **Квесты недели**: Синхрон, Твори добро (с фотоотчетами без лиц) и Детокс-таймер тишины с дыхательной анимацией.
-            - **Система поддержки «Искры»**: гармоничные звуковые стикеры на Web Audio API.
+            ### 🚀 Что включено:
+            - **Полноценный APK-файл**: установка напрямую на любое Android-устройство.
+            - **Квесты недели**: Синхронная утренняя разминка, добрые дела (с фотоотчетами без лиц) и Детокс-таймер тишины с дыхательной анимацией.
+            - **Система поддержки «Искры»**: анти-лайки с мягким звуковым сопровождением (Web Audio API).
             - **Безопасность и защита детей**: 2-кликовая модерация, возрастной контроль (согласие родителей <14 лет), тихий режим для учебы и сна.
 
-            ### 📲 Инструкция по тестированию на Android:
-            1. Откройте приложение в браузере Chrome или Яндекс на смартфоне.
-            2. Нажмите меню **(⋮)** -> **«Установить приложение»** / **«Добавить на главный экран»**.
-            3. Приложение установится на рабочий стол телефона с иконкой 🌿 и будет работать в полноэкранном режиме.
-          files: circlequest-android-beta-build.zip
+            ### 📲 Как установить APK на телефон:
+            1. Скачайте прикрепленный файл `circlequest-v1.0.0-beta.1-build101.apk` на Android-смартфон.
+            2. Нажмите на загруженный файл и подтвердите установку (разрешите установку из неизвестных источников в настройках безопасности при запросе системы).
+            3. Запустите приложение CircleQuest с рабочего стола!
+          files: |
+            circlequest-v1.0.0-beta.1-build101.apk
+            circlequest-android-beta-build.zip
           prerelease: true

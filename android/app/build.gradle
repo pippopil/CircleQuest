@@ -52,3 +52,32 @@ try {
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
 }
+
+// Custom Gradle task for beta APK packaging and direct installation
+tasks.register('buildBetaApk') {
+    group = "build"
+    description = "Assembles debug APK and copies it with a versioned name to project root for easy device testing"
+    dependsOn 'assembleDebug'
+
+    doLast {
+        def buildDirFile = layout.buildDirectory.asFile.get()
+        def apkOrigin = file("${buildDirFile}/outputs/apk/debug/app-debug.apk")
+        def destDir = file("${rootDir}/..")
+        def destApk = file("${destDir}/circlequest-v1.0.0-beta.1-build101.apk")
+
+        if (apkOrigin.exists()) {
+            copy {
+                from apkOrigin
+                into destDir
+                rename { destApk.name }
+            }
+            println "\n========================================================"
+            println " [CircleQuest Android Beta APK Ready!]"
+            println " File: ${destApk.name}"
+            println " Path: ${destApk.absolutePath}"
+            println " Size: ${Math.round(destApk.length() / 1024)} KB"
+            println " Test on device: adb install -r ${destApk.name}"
+            println "========================================================\n"
+        }
+    }
+}

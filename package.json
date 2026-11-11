@@ -9,6 +9,9 @@
     "build": "vite build",
     "build:android": "vite build && cap sync android",
     "build:apk": "vite build && cap sync android && cd android && ./gradlew assembleDebug && cd ..",
+    "build:apk:beta": "vite build && cap sync android && cd android && ./gradlew buildBetaApk && cd ..",
+    "apk:install": "adb install -r circlequest-v1.0.0-beta.1-build101.apk",
+    "android:open": "cap open android",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"

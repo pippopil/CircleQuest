@@ -44,9 +44,8 @@ jobs:
         run: |
           chmod +x android/gradlew
           cd android
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew buildBetaApk --no-daemon
           cd ..
-          cp android/app/build/outputs/apk/debug/app-debug.apk ./circlequest-v1.0.0-beta.1-build101.apk
 
       - name: Package Web Bundle
         run: |

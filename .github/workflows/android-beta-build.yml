@@ -21,10 +21,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
-        run: npm ci || npm install
+        run: npm ci || npm install --legacy-peer-deps
 
       - name: Typecheck
         run: npm run lint
@@ -38,9 +38,18 @@ jobs:
           zip -r ../circlequest-android-beta-build.zip .
           cd ..
 
+      - name: Upload Android Beta Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: circlequest-android-beta-build
+          path: circlequest-android-beta-build.zip
+          retention-days: 14
+
       - name: Create GitHub Beta Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           name: "CircleQuest Android Beta ${{ github.ref_name }} (Сборка #101)"
           body: |

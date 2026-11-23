@@ -8,6 +8,7 @@ import { useApp } from '../context/AppContext';
 import { INITIAL_SPARK_STICKERS } from '../utils/mockData';
 import { SparkSticker } from '../types';
 import { playSparkTone } from '../utils/audio';
+import { vibrateTap } from '../utils/haptics';
 import { Sparkles, X, Volume2, Send } from 'lucide-react';
 
 export const SparksModal: React.FC = () => {
@@ -21,6 +22,7 @@ export const SparksModal: React.FC = () => {
   const handleSelectSticker = (sticker: SparkSticker) => {
     setSelectedSticker(sticker);
     playSparkTone(sticker.soundType);
+    vibrateTap();
   };
 
   const handleSend = (e: React.FormEvent) => {

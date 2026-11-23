@@ -30,6 +30,8 @@ import {
   Loader2,
   PauseCircle,
   AlertCircle,
+  WifiOff,
+  HardDriveDownload,
 } from 'lucide-react';
 
 const SAMPLE_PROOF_PHOTOS = [
@@ -60,6 +62,9 @@ export const QuestsView: React.FC = () => {
     openSparkModal,
     openReportModal,
     showToast,
+    isOnline,
+    lastCachedAt,
+    pendingSyncCount,
   } = useApp();
 
   const [activeFilter, setActiveFilter] = useState<'all' | QuestType>('all');
@@ -174,6 +179,12 @@ export const QuestsView: React.FC = () => {
 
   const handleGenerateAiQuest = async () => {
     if (isGeneratingQuest) return;
+    if (!isOnline) {
+      setGenerationError(
+        'Нет подключения к интернету. Текущие квесты доступны из локального кэша, а генерация новых идей откроется онлайн.'
+      );
+      return;
+    }
     setIsGeneratingQuest(true);
     setGenerationError(null);
     try {
@@ -228,6 +239,19 @@ export const QuestsView: React.FC = () => {
       {/* Android Beta Mobile Install Prompt */}
       <AndroidInstallBanner />
 
+      {/* Offline Cached Quests Banner */}
+      {!isOnline && (
+        <div className="p-3.5 bg-[#EEF3EE] border border-[#5B8266]/35 rounded-2xl flex items-start gap-2.5 text-xs text-[#2B4734]">
+          <WifiOff className="w-4 h-4 text-[#486B52] shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <div className="font-bold">Офлайн-режим: квесты загружены из кэша</div>
+            <p className="text-[11px] text-[#324C3A]/90 leading-snug">
+              Все задания и отчёты доступны без интернета (IndexedDB + Service Worker). Новые отметки сохранятся локально{pendingSyncCount > 0 ? ` (в очереди: ${pendingSyncCount})` : ''}.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Parental Pause Banner */}
       {parentSettings.paused && (
         <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-2xl flex items-start gap-2.5 text-xs text-amber-900">
@@ -270,12 +294,15 @@ export const QuestsView: React.FC = () => {
           />
         </div>
 
-        <div className="mt-2.5 flex items-center justify-between text-[11px] text-stone-600">
+        <div className="mt-2.5 flex items-center justify-between gap-2 text-[11px] text-stone-600">
           <span className="flex items-center gap-1">
             <Users className="w-3.5 h-3.5 text-[#486B52]" />
             <span>Вклад всего круга: {totalCompleted} из {totalTarget} отметок</span>
           </span>
-          <span className="text-stone-400">Без личных рейтингов</span>
+          <span className="text-stone-400 flex items-center gap-1 shrink-0" title={`Кэш обновлён: ${new Date(lastCachedAt).toLocaleTimeString('ru-RU')}`}>
+            <HardDriveDownload className="w-3 h-3 text-[#486B52]" />
+            <span>Кэш офлайн</span>
+          </span>
         </div>
       </div>
 

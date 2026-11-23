@@ -30,6 +30,7 @@ import {
   INITIAL_SPARK_STICKERS,
 } from '../utils/mockData';
 import { playSparkTone, playSuccessChime } from '../utils/audio';
+import { vibrateQuestComplete, vibrateSparkSent } from '../utils/haptics';
 import {
   db,
   hashPin,
@@ -42,6 +43,8 @@ interface AppContextType {
   isLoading: boolean;
   loadError: string | null;
   pendingSyncCount: number;
+  isOnline: boolean;
+  lastCachedAt: string;
 
   user: UserProfile;
   circleName: string;
@@ -138,6 +141,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
+  const [isOnline, setIsOnline] = useState<boolean>(() =>
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+  const [lastCachedAt, setLastCachedAt] = useState<string>(() => new Date().toISOString());
 
   const [user, setUser] = useState<UserProfile>(INITIAL_USER);
   const [circleName, setCircleName] = useState<string>('Зелёный Патруль');
@@ -187,6 +194,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setDnd(state.dnd);
       setParentSettings(state.parentSettings);
       setPendingSyncCount(state.pendingSyncCount);
+      setLastCachedAt(state.lastCachedAt);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Ошибка инициализации локальной базы данных';
       setLoadError(message);
@@ -198,6 +206,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     void hydrateFromDb();
   }, [hydrateFromDb]);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const queueSync = useCallback(
     (
@@ -306,6 +325,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     setMembers(nextMembers);
 
+    const nextCachedAt = new Date().toISOString();
+    setLastCachedAt(nextCachedAt);
+
     void (async () => {
       if (updatedQuestSnapshot) {
         await db.quests.put(updatedQuestSnapshot);
@@ -316,6 +338,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         name: circleName,
         code: circleCode,
         members: nextMembers,
+        lastCachedAt: nextCachedAt,
       });
       queueSync('COMPLETE_QUEST', 'proof', newProof.id, {
         questId,
@@ -325,6 +348,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     })();
 
     playSuccessChime();
+    vibrateQuestComplete();
     showToast('Квест засчитан в общий прогресс Круга! Командный вклад растет 🌟');
   };
 
@@ -347,10 +371,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdByAi: true,
     };
 
+    const nextCachedAt = new Date().toISOString();
+    setLastCachedAt(nextCachedAt);
     setQuests((prev) => [newQuest, ...prev]);
     await db.quests.put(newQuest);
+    await db.circles.put({
+      id: 'default_circle',
+      name: circleName,
+      code: circleCode,
+      members,
+      lastCachedAt: nextCachedAt,
+    });
     queueSync('CREATE_AI_QUEST', 'quest', newQuest.id, newQuest);
     playSuccessChime();
+    vibrateQuestComplete();
     showToast(`Добавлен новый квест для круга: «${newQuest.title}» ✨`);
   };
 
@@ -389,6 +423,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     queueSync('SEND_SPARK', 'spark', newSpark.id, newSpark);
 
     playSparkTone(sticker.soundType);
+    vibrateSparkSent();
     closeSparkModal();
     showToast(`Искра «${sticker.title}» бережно отправлена для ${targetMember.name} 💫`);
   };
@@ -801,6 +836,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isLoading,
         loadError,
         pendingSyncCount,
+        isOnline,
+        lastCachedAt,
         user,
         circleName,
         circleCode,

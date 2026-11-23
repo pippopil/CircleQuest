@@ -6,7 +6,8 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { playSuccessChime, playDetoxTick } from '../utils/audio';
-import { Moon, Play, Pause, X, Check, Volume2, VolumeX, Sparkles } from 'lucide-react';
+import { vibrateDetoxComplete, vibrateTap } from '../utils/haptics';
+import { Moon, Play, Pause, X, Check, Volume2, VolumeX } from 'lucide-react';
 
 export const DetoxTimerModal: React.FC = () => {
   const { activeDetoxModal, closeDetoxModal, completeQuest, quests } = useApp();
@@ -34,6 +35,7 @@ export const DetoxTimerModal: React.FC = () => {
             setIsRunning(false);
             setIsCompleted(true);
             playSuccessChime();
+            vibrateDetoxComplete();
             return 0;
           }
           if (soundEnabled && prev % 10 === 0) {
@@ -178,7 +180,10 @@ export const DetoxTimerModal: React.FC = () => {
             </button>
           ) : (
             <button
-              onClick={() => setIsRunning(true)}
+              onClick={() => {
+                vibrateTap();
+                setIsRunning(true);
+              }}
               className="w-full py-3 rounded-2xl bg-[#5B8266] hover:bg-[#4A6D54] text-white font-semibold text-sm shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-98"
             >
               <Play className="w-4 h-4 fill-white" />

@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { SparkMessage } from '../types';
 import { playSparkTone } from '../utils/audio';
+import { vibrateSparkReceived } from '../utils/haptics';
 import {
   Users,
   Sparkles,
@@ -49,6 +50,7 @@ export const CircleView: React.FC = () => {
 
   const handlePlaySpark = (soundType: SparkMessage['soundType']) => {
     playSparkTone(soundType);
+    vibrateSparkReceived();
   };
 
   return (

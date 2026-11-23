@@ -34,6 +34,7 @@ export interface CircleRecord {
   name: string;
   code: string;
   members: CircleMember[];
+  lastCachedAt?: string;
 }
 
 export interface ProofRecord extends QuestProof {
@@ -168,6 +169,7 @@ export interface HydratedAppState {
   dnd: DNDSchedule;
   parentSettings: ParentSettings;
   pendingSyncCount: number;
+  lastCachedAt: string;
 }
 
 export async function createDefaultParentSettings(): Promise<ParentSettings> {
@@ -224,6 +226,7 @@ export async function migrateFromLocalStorageAndSeed(): Promise<HydratedAppState
           name: circleName,
           code: circleCode,
           members,
+          lastCachedAt: new Date().toISOString(),
         });
         await db.quests.bulkPut(quests);
         if (flattenedProofs.length > 0) {
@@ -334,6 +337,7 @@ export async function migrateFromLocalStorageAndSeed(): Promise<HydratedAppState
     dnd,
     parentSettings: fallbackParent,
     pendingSyncCount,
+    lastCachedAt: circle?.lastCachedAt || new Date().toISOString(),
   };
 }
 

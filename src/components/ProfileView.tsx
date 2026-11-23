@@ -5,21 +5,22 @@
 
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { AvatarBadge } from './AvatarBadge';
+import { generateAbstractAvatarDataUrl } from '../utils/avatarGenerator';
+import { vibrateTap } from '../utils/haptics';
 import {
-  User,
   ShieldCheck,
-  HeartHandshake,
   Moon,
   Laptop,
   Smartphone,
   LogOut,
   Sparkles,
-  ShieldAlert,
   Check,
   FileText,
   Tag,
   Clock,
   Shield,
+  Wand2,
 } from 'lucide-react';
 
 export const ProfileView: React.FC = () => {
@@ -43,6 +44,7 @@ export const ProfileView: React.FC = () => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(user.name);
   const [selectedAge, setSelectedAge] = useState<number>(user.age);
+  const [avatarVariant, setAvatarVariant] = useState<number>(1);
 
   const availableAvatars = ['🦊', '🦉', '🐻', '🦔', '🦌', '🐺', '🦝', '🦅', '🌿', '🌱'];
   const allInterests = [
@@ -85,6 +87,25 @@ export const ProfileView: React.FC = () => {
     updateUser({ interests: updated });
   };
 
+  const handleGenerateAbstractAvatar = () => {
+    try {
+      const nextVariant = avatarVariant + 1;
+      setAvatarVariant(nextVariant);
+      const dataUrl = generateAbstractAvatarDataUrl(
+        user.name,
+        user.handle,
+        user.interests,
+        nextVariant
+      );
+      vibrateTap();
+      updateUser({ avatar: dataUrl });
+      showToast('Создана уникальная абстрактная аватарка по вашим интересам 🎨');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Не удалось создать аватар';
+      showToast(msg);
+    }
+  };
+
   return (
     <div className="space-y-4 pb-20">
       {/* Profile Card */}
@@ -92,9 +113,12 @@ export const ProfileView: React.FC = () => {
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             {/* Avatar with quick selector */}
-            <div className="w-14 h-14 rounded-2xl bg-[#5B8266]/15 border border-[#5B8266]/25 flex items-center justify-center text-3xl shadow-xs">
-              {user.avatar}
-            </div>
+            <AvatarBadge
+              avatar={user.avatar}
+              alt={user.name}
+              className="w-14 h-14 rounded-2xl"
+              textClassName="text-3xl"
+            />
 
             <div>
               {isEditingName ? (
@@ -151,17 +175,27 @@ export const ProfileView: React.FC = () => {
           </div>
         </div>
 
-        {/* Avatar Picker */}
-        <div>
-          <span className="text-[10px] text-stone-400 uppercase tracking-wider font-semibold block mb-1">
-            Выбрать аватар-символ:
-          </span>
+        {/* Avatar Picker & Abstract Avatar Generator */}
+        <div className="space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[10px] text-stone-400 uppercase tracking-wider font-semibold">
+              Выбрать аватар-символ или сгенерировать арт:
+            </span>
+            <button
+              type="button"
+              onClick={handleGenerateAbstractAvatar}
+              className="min-h-[44px] px-3 py-2 rounded-xl bg-[#486B52] hover:bg-[#3B5944] text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors"
+            >
+              <Wand2 className="w-3.5 h-3.5" />
+              <span>Создать абстрактный аватар</span>
+            </button>
+          </div>
           <div className="flex flex-wrap gap-1.5">
             {availableAvatars.map((emoji) => (
               <button
                 key={emoji}
                 onClick={() => updateUser({ avatar: emoji })}
-                className={`w-8 h-8 rounded-xl text-lg flex items-center justify-center transition-all ${
+                className={`w-9 h-9 rounded-xl text-lg flex items-center justify-center transition-all ${
                   user.avatar === emoji
                     ? 'bg-[#5B8266] text-white ring-2 ring-[#5B8266]/30 shadow-xs'
                     : 'bg-white border border-stone-200 hover:bg-stone-50'

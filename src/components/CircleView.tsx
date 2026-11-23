@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { AvatarBadge } from './AvatarBadge';
 import { SparkMessage } from '../types';
 import { playSparkTone } from '../utils/audio';
 import { vibrateSparkReceived } from '../utils/haptics';
@@ -139,9 +140,12 @@ export const CircleView: React.FC = () => {
               >
                 {/* Left: Avatar & Info */}
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-11 h-11 rounded-2xl bg-[#5B8266]/10 flex items-center justify-center text-2xl shrink-0 border border-[#5B8266]/15">
-                    {member.avatar}
-                  </div>
+                  <AvatarBadge
+                    avatar={member.avatar}
+                    alt={member.name}
+                    className="w-11 h-11 rounded-2xl"
+                    textClassName="text-2xl"
+                  />
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       <h3 className="text-xs font-bold text-stone-900 truncate">

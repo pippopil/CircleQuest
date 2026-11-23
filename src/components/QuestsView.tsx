@@ -7,6 +7,7 @@ import React, { useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { GeneratedQuestPayload, Quest, QuestType } from '../types';
 import { AndroidInstallBanner } from './AndroidInstallBanner';
+import { AvatarBadge } from './AvatarBadge';
 import {
   blurImageWithCanvas,
   createSampleEcoImage,
@@ -491,7 +492,12 @@ export const QuestsView: React.FC = () => {
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="text-base">{proof.userAvatar}</span>
+                          <AvatarBadge
+                            avatar={proof.userAvatar}
+                            alt={proof.userName}
+                            className="w-6 h-6 rounded-lg"
+                            textClassName="text-sm"
+                          />
                           <span className="text-xs font-semibold text-stone-900">{proof.userName}</span>
                           <span className="text-[10px] text-stone-400 tabular-nums">· {proof.timestamp}</span>
                         </div>

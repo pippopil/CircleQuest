@@ -33,9 +33,12 @@ export const Header: React.FC = () => {
         <div className="max-w-4xl mx-auto px-4 h-15 flex items-center justify-between gap-3">
           {/* Brand & Circle Title */}
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-[#5B8266]/15 flex items-center justify-center text-[#324C3A] font-bold text-lg shrink-0 border border-[#5B8266]/20 shadow-xs">
-              🌿
-            </div>
+            <img
+              src="/pwa-192x192.png"
+              alt="CircleQuest"
+              referrerPolicy="no-referrer"
+              className="w-9 h-9 rounded-xl object-cover shrink-0 border border-[#5B8266]/25 shadow-xs"
+            />
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-bold text-stone-900 tracking-tight truncate">

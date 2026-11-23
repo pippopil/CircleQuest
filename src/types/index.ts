@@ -34,7 +34,9 @@ export interface QuestProof {
   timestamp: string;
   comment?: string;
   imageUrl?: string;
+  photoBlob?: Blob;
   blurred?: boolean;
+  isBlurred?: boolean;
   verified: boolean;
 }
 
@@ -52,6 +54,7 @@ export interface Quest {
   proofs: QuestProof[];
   icon: string;
   tips: string;
+  createdByAi?: boolean;
 }
 
 export interface SparkSticker {
@@ -90,6 +93,7 @@ export interface SafetyReport {
   reporterId: string;
   reason: 'face_or_personal_data' | 'bullying_or_harassment' | 'dangerous_act' | 'inappropriate_content' | 'spam';
   details?: string;
+  anonymous?: boolean;
   status: 'pending' | 'resolved_hidden' | 'resolved_warned' | 'resolved_dismissed';
   createdAt: string;
   moderatorNote?: string;
@@ -137,3 +141,40 @@ export interface ActiveSession {
   lastActive: string;
   isCurrent: boolean;
 }
+
+export interface SafeZone {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+  createdAt: string;
+}
+
+export interface ParentSettings {
+  id: string;
+  pinHash: string;
+  paused: boolean;
+  safeZones: SafeZone[];
+  updatedAt: string;
+}
+
+export interface SyncQueueItem {
+  id?: number;
+  action: string;
+  entityType: 'quest' | 'proof' | 'spark' | 'report' | 'user' | 'dnd' | 'parentSettings' | 'session' | 'circle';
+  entityId: string;
+  payload: string;
+  createdAt: string;
+  synced: boolean;
+}
+
+export interface GeneratedQuestPayload {
+  title: string;
+  description: string;
+  category: string;
+  duration: string;
+  requiresPhoto: boolean;
+  tips: string;
+}
+

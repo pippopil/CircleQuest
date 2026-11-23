@@ -12,6 +12,7 @@ export const ReportModal: React.FC = () => {
   const { activeReportTarget, closeReportModal, submitReport } = useApp();
   const [selectedReason, setSelectedReason] = useState<SafetyReport['reason']>('face_or_personal_data');
   const [details, setDetails] = useState('');
+  const [anonymous, setAnonymous] = useState(true);
 
   if (!activeReportTarget) return null;
 
@@ -45,7 +46,8 @@ export const ReportModal: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    submitReport(selectedReason, details);
+    submitReport(selectedReason, details, anonymous);
+    setDetails('');
   };
 
   return (
@@ -132,6 +134,16 @@ export const ReportModal: React.FC = () => {
               className="w-full text-xs p-2.5 rounded-xl border border-stone-200 bg-white text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#5B8266]/30 placeholder:text-stone-400"
             />
           </div>
+
+          <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-white border border-stone-200 cursor-pointer text-xs text-stone-700">
+            <input
+              type="checkbox"
+              checked={anonymous}
+              onChange={(e) => setAnonymous(e.target.checked)}
+              className="rounded text-[#486B52] focus:ring-[#486B52]"
+            />
+            <span>Анонимная жалоба (скрыть моё имя от участников и в отчете)</span>
+          </label>
 
           {/* Action buttons */}
           <div className="pt-2 flex items-center justify-end gap-2">

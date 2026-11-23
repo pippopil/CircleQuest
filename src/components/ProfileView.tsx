@@ -34,6 +34,8 @@ export const ProfileView: React.FC = () => {
     openParentConsentModal,
     openPrivacyPolicyModal,
     openModeratorModal,
+    openParentDashboardModal,
+    parentSettings,
     setRoleMode,
     showToast,
   } = useApp();
@@ -214,6 +216,25 @@ export const ProfileView: React.FC = () => {
             </button>
           </div>
         )}
+
+        {/* PIN-protected Parental Control Dashboard Launcher */}
+        <div className="pt-2 border-t border-stone-100 flex items-center justify-between gap-3">
+          <div className="text-[11px] text-stone-600">
+            <div className="font-semibold text-stone-800">
+              Родительский дашборд (PIN-доступ)
+            </div>
+            <div className="text-[10px] text-stone-500">
+              Статус: {parentSettings.paused ? 'На паузе' : 'Активен'} · Безопасных зон: {parentSettings.safeZones.length}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={openParentDashboardModal}
+            className="min-h-[44px] px-3 py-2 rounded-xl bg-[#486B52]/12 hover:bg-[#486B52]/20 text-[#2B4734] text-xs font-semibold shrink-0 transition-colors"
+          >
+            Настройки PIN
+          </button>
+        </div>
       </div>
 
       {/* Interests Tags (for Quest Personalization) */}

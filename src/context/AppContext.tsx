@@ -3,16 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   UserProfile,
   CircleMember,
   Quest,
+  QuestProof,
   SparkMessage,
   SafetyReport,
   NotificationItem,
   DNDSchedule,
   ActiveSession,
+  ParentSettings,
+  SafeZone,
+  GeneratedQuestPayload,
 } from '../types';
 import {
   INITIAL_USER,
@@ -26,8 +30,19 @@ import {
   INITIAL_SPARK_STICKERS,
 } from '../utils/mockData';
 import { playSparkTone, playSuccessChime } from '../utils/audio';
+import {
+  db,
+  hashPin,
+  migrateFromLocalStorageAndSeed,
+  enqueueSyncOperation,
+  resetDatabaseToSeed,
+} from '../db/database';
 
 interface AppContextType {
+  isLoading: boolean;
+  loadError: string | null;
+  pendingSyncCount: number;
+
   user: UserProfile;
   circleName: string;
   circleCode: string;
@@ -38,10 +53,11 @@ interface AppContextType {
   reports: SafetyReport[];
   sessions: ActiveSession[];
   dnd: DNDSchedule;
+  parentSettings: ParentSettings;
   activeTab: 'quests' | 'circle' | 'map' | 'profile';
   roleMode: 'user' | 'moderator';
   toast: string | null;
-  
+
   // Modals
   activeDetoxModal: boolean;
   activeSparkRecipient: CircleMember | null;
@@ -50,6 +66,7 @@ interface AppContextType {
   activePrivacyPolicyModal: boolean;
   activeInviteModal: boolean;
   activeModeratorModal: boolean;
+  activeParentDashboardModal: boolean;
 
   // Actions
   setActiveTab: (tab: 'quests' | 'circle' | 'map' | 'profile') => void;
@@ -69,10 +86,19 @@ interface AppContextType {
   closeInviteModal: () => void;
   openModeratorModal: () => void;
   closeModeratorModal: () => void;
+  openParentDashboardModal: () => void;
+  closeParentDashboardModal: () => void;
 
-  completeQuest: (questId: string, comment: string, imageUrl?: string, blurred?: boolean) => void;
+  completeQuest: (
+    questId: string,
+    comment: string,
+    imageUrl?: string,
+    blurred?: boolean,
+    photoBlob?: Blob
+  ) => void;
+  addGeneratedQuest: (payload: GeneratedQuestPayload) => Promise<void>;
   sendSpark: (toMemberId: string, stickerId: string, customNote?: string, questTitle?: string) => void;
-  submitReport: (reason: SafetyReport['reason'], details?: string) => void;
+  submitReport: (reason: SafetyReport['reason'], details?: string, anonymous?: boolean) => void;
   resolveReport: (reportId: string, action: 'hide' | 'warn' | 'dismiss', moderatorNote?: string) => void;
   submitAppeal: (reportId: string, appealText: string) => void;
   resolveAppeal: (reportId: string, approved: boolean) => void;
@@ -88,60 +114,42 @@ interface AppContextType {
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
   resetAllData: () => void;
+
+  // Parent Dashboard actions
+  verifyParentPin: (pin: string) => Promise<boolean>;
+  updateParentPin: (newPin: string) => Promise<boolean>;
+  toggleAccountPause: (paused: boolean) => Promise<void>;
+  addSafeZone: (zone: Omit<SafeZone, 'id' | 'createdAt'>) => Promise<void>;
+  removeSafeZone: (zoneId: string) => Promise<void>;
+  retryLoad: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'circlequest_state_v1';
+const INITIAL_PARENT_SETTINGS: ParentSettings = {
+  id: 'default',
+  pinHash: '',
+  paused: false,
+  safeZones: [],
+  updatedAt: '',
+};
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<UserProfile>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_user`);
-    return saved ? JSON.parse(saved) : INITIAL_USER;
-  });
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
 
-  const [circleName, setCircleName] = useState<string>(() => {
-    return localStorage.getItem(`${STORAGE_KEY}_circlename`) || 'Зелёный Патруль';
-  });
-
-  const [circleCode, setCircleCode] = useState<string>(() => {
-    return localStorage.getItem(`${STORAGE_KEY}_circlecode`) || 'GREEN-842';
-  });
-
-  const [members, setMembers] = useState<CircleMember[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_members`);
-    return saved ? JSON.parse(saved) : INITIAL_MEMBERS;
-  });
-
-  const [quests, setQuests] = useState<Quest[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_quests`);
-    return saved ? JSON.parse(saved) : INITIAL_QUESTS;
-  });
-
-  const [sparksFeed, setSparksFeed] = useState<SparkMessage[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_sparks`);
-    return saved ? JSON.parse(saved) : INITIAL_SPARKS_FEED;
-  });
-
-  const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_notifs`);
-    return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
-  });
-
-  const [reports, setReports] = useState<SafetyReport[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_reports`);
-    return saved ? JSON.parse(saved) : INITIAL_REPORTS;
-  });
-
-  const [sessions, setSessions] = useState<ActiveSession[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_sessions`);
-    return saved ? JSON.parse(saved) : INITIAL_SESSIONS;
-  });
-
-  const [dnd, setDnd] = useState<DNDSchedule>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_dnd`);
-    return saved ? JSON.parse(saved) : INITIAL_DND;
-  });
+  const [user, setUser] = useState<UserProfile>(INITIAL_USER);
+  const [circleName, setCircleName] = useState<string>('Зелёный Патруль');
+  const [circleCode, setCircleCode] = useState<string>('GREEN-842');
+  const [members, setMembers] = useState<CircleMember[]>(INITIAL_MEMBERS);
+  const [quests, setQuests] = useState<Quest[]>(INITIAL_QUESTS);
+  const [sparksFeed, setSparksFeed] = useState<SparkMessage[]>(INITIAL_SPARKS_FEED);
+  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+  const [reports, setReports] = useState<SafetyReport[]>(INITIAL_REPORTS);
+  const [sessions, setSessions] = useState<ActiveSession[]>(INITIAL_SESSIONS);
+  const [dnd, setDnd] = useState<DNDSchedule>(INITIAL_DND);
+  const [parentSettings, setParentSettings] = useState<ParentSettings>(INITIAL_PARENT_SETTINGS);
 
   const [activeTab, setActiveTab] = useState<'quests' | 'circle' | 'map' | 'profile'>('quests');
   const [roleMode, setRoleMode] = useState<'user' | 'moderator'>('user');
@@ -160,31 +168,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activePrivacyPolicyModal, setActivePrivacyPolicyModal] = useState<boolean>(false);
   const [activeInviteModal, setActiveInviteModal] = useState<boolean>(false);
   const [activeModeratorModal, setActiveModeratorModal] = useState<boolean>(false);
+  const [activeParentDashboardModal, setActiveParentDashboardModal] = useState<boolean>(false);
 
-  // Persist on change
-  useEffect(() => {
+  const hydrateFromDb = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError(null);
     try {
-      localStorage.setItem(`${STORAGE_KEY}_user`, JSON.stringify(user));
-      localStorage.setItem(`${STORAGE_KEY}_circlename`, circleName);
-      localStorage.setItem(`${STORAGE_KEY}_circlecode`, circleCode);
-      localStorage.setItem(`${STORAGE_KEY}_members`, JSON.stringify(members));
-      localStorage.setItem(`${STORAGE_KEY}_quests`, JSON.stringify(quests));
-      localStorage.setItem(`${STORAGE_KEY}_sparks`, JSON.stringify(sparksFeed));
-      localStorage.setItem(`${STORAGE_KEY}_notifs`, JSON.stringify(notifications));
-      localStorage.setItem(`${STORAGE_KEY}_reports`, JSON.stringify(reports));
-      localStorage.setItem(`${STORAGE_KEY}_sessions`, JSON.stringify(sessions));
-      localStorage.setItem(`${STORAGE_KEY}_dnd`, JSON.stringify(dnd));
-    } catch {
-      // Ignore storage quota or sandbox restrictions
+      const state = await migrateFromLocalStorageAndSeed();
+      setUser(state.user);
+      setCircleName(state.circleName);
+      setCircleCode(state.circleCode);
+      setMembers(state.members);
+      setQuests(state.quests);
+      setSparksFeed(state.sparksFeed);
+      setNotifications(state.notifications);
+      setReports(state.reports);
+      setSessions(state.sessions);
+      setDnd(state.dnd);
+      setParentSettings(state.parentSettings);
+      setPendingSyncCount(state.pendingSyncCount);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Ошибка инициализации локальной базы данных';
+      setLoadError(message);
+    } finally {
+      setIsLoading(false);
     }
-  }, [user, circleName, circleCode, members, quests, sparksFeed, notifications, reports, sessions, dnd]);
+  }, []);
 
-  const showToast = (msg: string) => {
+  useEffect(() => {
+    void hydrateFromDb();
+  }, [hydrateFromDb]);
+
+  const queueSync = useCallback(
+    (
+      action: string,
+      entityType: Parameters<typeof enqueueSyncOperation>[1],
+      entityId: string,
+      payloadObj: unknown
+    ) => {
+      void enqueueSyncOperation(action, entityType, entityId, payloadObj).then(() => {
+        setPendingSyncCount((prev) => prev + 1);
+      });
+    },
+    []
+  );
+
+  const showToast = useCallback((msg: string) => {
     setToast(msg);
     setTimeout(() => {
       setToast((prev) => (prev === msg ? null : prev));
     }, 3800);
-  };
+  }, []);
 
   const openDetoxModal = () => setActiveDetoxModal(true);
   const closeDetoxModal = () => setActiveDetoxModal(false);
@@ -209,8 +243,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const openModeratorModal = () => setActiveModeratorModal(true);
   const closeModeratorModal = () => setActiveModeratorModal(false);
 
+  const openParentDashboardModal = () => setActiveParentDashboardModal(true);
+  const closeParentDashboardModal = () => setActiveParentDashboardModal(false);
+
   // Complete quest
-  const completeQuest = (questId: string, comment: string, imageUrl?: string, blurred: boolean = false) => {
+  const completeQuest = (
+    questId: string,
+    comment: string,
+    imageUrl?: string,
+    blurred: boolean = false,
+    photoBlob?: Blob
+  ) => {
+    if (parentSettings.paused) {
+      showToast('Аккаунт временно поставлен на паузу в родительском контроле');
+      return;
+    }
+
+    const newProof: QuestProof = {
+      id: `proof_${Date.now()}`,
+      userId: user.id,
+      userName: user.name,
+      userAvatar: user.avatar,
+      timestamp: 'Только что',
+      comment: comment.trim() || undefined,
+      imageUrl: imageUrl || undefined,
+      photoBlob,
+      blurred: imageUrl ? true : blurred,
+      isBlurred: imageUrl ? true : blurred,
+      verified: true,
+    };
+
+    let updatedQuestSnapshot: Quest | null = null;
+
     setQuests((prev) =>
       prev.map((q) => {
         if (q.id !== questId) return q;
@@ -219,40 +283,84 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return q;
         }
 
-        const newProof = {
-          id: `proof_${Date.now()}`,
-          userId: user.id,
-          userName: user.name,
-          userAvatar: user.avatar,
-          timestamp: 'Только что',
-          comment: comment.trim() || undefined,
-          imageUrl: imageUrl || undefined,
-          blurred,
-          verified: true,
+        const proofForQuestArray: QuestProof = {
+          ...newProof,
+          photoBlob: undefined,
         };
 
-        return {
+        updatedQuestSnapshot = {
           ...q,
           isCompletedByMe: true,
           completedCount: Math.min(q.targetCount, q.completedCount + 1),
+          proofs: [proofForQuestArray, ...q.proofs],
+        };
+        return {
+          ...updatedQuestSnapshot,
           proofs: [newProof, ...q.proofs],
         };
       })
     );
 
-    // Update user stats in members list
-    setMembers((prev) =>
-      prev.map((m) =>
-        m.id === user.id ? { ...m, completedThisWeek: m.completedThisWeek + 1, status: 'Квест недели выполнен! 🌿' } : m
-      )
+    const nextMembers = members.map((m) =>
+      m.id === user.id ? { ...m, completedThisWeek: m.completedThisWeek + 1, status: 'Квест недели выполнен! 🌿' } : m
     );
+    setMembers(nextMembers);
+
+    void (async () => {
+      if (updatedQuestSnapshot) {
+        await db.quests.put(updatedQuestSnapshot);
+      }
+      await db.proofs.put({ ...newProof, questId });
+      await db.circles.put({
+        id: 'default_circle',
+        name: circleName,
+        code: circleCode,
+        members: nextMembers,
+      });
+      queueSync('COMPLETE_QUEST', 'proof', newProof.id, {
+        questId,
+        hasBlob: Boolean(photoBlob),
+        blurred: Boolean(imageUrl),
+      });
+    })();
 
     playSuccessChime();
     showToast('Квест засчитан в общий прогресс Круга! Командный вклад растет 🌟');
   };
 
+  // Add AI-generated quest
+  const addGeneratedQuest = async (payload: GeneratedQuestPayload): Promise<void> => {
+    const newQuest: Quest = {
+      id: `quest_ai_${Date.now()}`,
+      type: payload.category.toLowerCase().includes('детокс') ? 'detox' : 'kindness',
+      title: payload.title,
+      category: payload.category,
+      description: payload.description,
+      duration: payload.duration,
+      targetCount: Math.max(1, members.length),
+      completedCount: 0,
+      isCompletedByMe: false,
+      requiresPhoto: payload.requiresPhoto,
+      proofs: [],
+      icon: 'sparkles',
+      tips: payload.tips,
+      createdByAi: true,
+    };
+
+    setQuests((prev) => [newQuest, ...prev]);
+    await db.quests.put(newQuest);
+    queueSync('CREATE_AI_QUEST', 'quest', newQuest.id, newQuest);
+    playSuccessChime();
+    showToast(`Добавлен новый квест для круга: «${newQuest.title}» ✨`);
+  };
+
   // Send Spark
   const sendSpark = (toMemberId: string, stickerId: string, customNote?: string, questTitle?: string) => {
+    if (parentSettings.paused) {
+      showToast('Аккаунт временно поставлен на паузу в родительском контроле');
+      return;
+    }
+
     const targetMember = members.find((m) => m.id === toMemberId);
     if (!targetMember) return;
 
@@ -277,13 +385,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setSparksFeed((prev) => [newSpark, ...prev]);
+    void db.sparks.put(newSpark);
+    queueSync('SEND_SPARK', 'spark', newSpark.id, newSpark);
+
     playSparkTone(sticker.soundType);
     closeSparkModal();
     showToast(`Искра «${sticker.title}» бережно отправлена для ${targetMember.name} 💫`);
   };
 
   // Submit Safety Report (2-click)
-  const submitReport = (reason: SafetyReport['reason'], details?: string) => {
+  const submitReport = (reason: SafetyReport['reason'], details?: string, anonymous: boolean = true) => {
     if (!activeReportTarget) return;
 
     const newReport: SafetyReport = {
@@ -292,125 +403,183 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       targetId: activeReportTarget.id,
       targetPreview: activeReportTarget.preview,
       targetAuthorName: activeReportTarget.name,
-      reporterId: user.id,
+      reporterId: anonymous ? 'anonymous' : user.id,
       reason,
       details: details?.trim() || undefined,
+      anonymous,
       status: 'pending',
       createdAt: 'Только что',
     };
 
     setReports((prev) => [newReport, ...prev]);
+    void db.reports.put(newReport);
+    queueSync('SUBMIT_REPORT', 'report', newReport.id, newReport);
+
     closeReportModal();
-    showToast('Жалоба принята. Модераторы КругоКвеста бережно проверят контент 🛡️');
+    showToast(
+      anonymous
+        ? 'Анонимная жалоба принята. Модераторы бережно проверят контент 🛡️'
+        : 'Жалоба принята. Модераторы КругоКвеста бережно проверят контент 🛡️'
+    );
   };
 
   // Moderator resolution
   const resolveReport = (reportId: string, action: 'hide' | 'warn' | 'dismiss', moderatorNote?: string) => {
+    const targetReport = reports.find((r) => r.id === reportId);
+    const statusMap = {
+      hide: 'resolved_hidden' as const,
+      warn: 'resolved_warned' as const,
+      dismiss: 'resolved_dismissed' as const,
+    };
+    const nextStatus = statusMap[action];
+    const resolvedNote =
+      moderatorNote ||
+      (action === 'hide' ? 'Контент скрыт из-за нарушения правил приватности' : 'Предупреждение автору');
+
     setReports((prev) =>
-      prev.map((rep) => {
-        if (rep.id !== reportId) return rep;
-        const statusMap = {
-          hide: 'resolved_hidden' as const,
-          warn: 'resolved_warned' as const,
-          dismiss: 'resolved_dismissed' as const,
-        };
-        return {
-          ...rep,
-          status: statusMap[action],
-          moderatorNote: moderatorNote || (action === 'hide' ? 'Контент скрыт из-за нарушения правил приватности' : 'Предупреждение автору'),
-        };
-      })
+      prev.map((rep) =>
+        rep.id === reportId
+          ? {
+              ...rep,
+              status: nextStatus,
+              moderatorNote: resolvedNote,
+            }
+          : rep
+      )
     );
 
-    // If hidden, hide the proof from quests
-    if (action === 'hide') {
-      const rep = reports.find((r) => r.id === reportId);
-      if (rep && rep.targetType === 'proof') {
-        setQuests((prev) =>
-          prev.map((q) => ({
-            ...q,
-            proofs: q.proofs.filter((p) => p.id !== rep.targetId),
-          }))
-        );
-      }
+    if (targetReport) {
+      const updatedRep: SafetyReport = {
+        ...targetReport,
+        status: nextStatus,
+        moderatorNote: resolvedNote,
+      };
+      void db.reports.put(updatedRep);
+
+      const statusNotification: NotificationItem = {
+        id: `notif_rep_${Date.now()}`,
+        type: 'gentle_reminder',
+        title: 'Обновление по обращению в модерацию',
+        body:
+          action === 'hide'
+            ? `Контент (${targetReport.targetAuthorName}) скрыт для защиты приватности.`
+            : action === 'warn'
+            ? `Автору (${targetReport.targetAuthorName}) направлено бережное напоминание о правилах.`
+            : 'Модератор проверил обращение и оставил контент без изменений.',
+        timestamp: 'Только что',
+        read: false,
+      };
+      setNotifications((prev) => [statusNotification, ...prev]);
+      void db.notifications.put(statusNotification);
     }
 
-    showToast(`Решение по жалобе зафиксировано: ${action === 'hide' ? 'Контент скрыт' : action === 'warn' ? 'Вынесено предупреждение' : 'Жалоба отклонена'}`);
+    if (action === 'hide' && targetReport && targetReport.targetType === 'proof') {
+      setQuests((prev) =>
+        prev.map((q) => {
+          const filtered = q.proofs.filter((p) => p.id !== targetReport.targetId);
+          if (filtered.length !== q.proofs.length) {
+            const nextQ = { ...q, proofs: filtered };
+            void db.quests.put(nextQ);
+            return nextQ;
+          }
+          return q;
+        })
+      );
+      void db.proofs.delete(targetReport.targetId);
+    }
+
+    showToast(
+      `Решение по жалобе зафиксировано: ${
+        action === 'hide' ? 'Контент скрыт' : action === 'warn' ? 'Вынесено предупреждение' : 'Жалоба отклонена'
+      }`
+    );
   };
 
   // Appeal flow
   const submitAppeal = (reportId: string, appealText: string) => {
     setReports((prev) =>
-      prev.map((r) =>
-        r.id === reportId
-          ? {
-              ...r,
-              appealed: true,
-              appealText,
-              appealStatus: 'pending',
-            }
-          : r
-      )
+      prev.map((r) => {
+        if (r.id !== reportId) return r;
+        const updated: SafetyReport = {
+          ...r,
+          appealed: true,
+          appealText,
+          appealStatus: 'pending',
+        };
+        void db.reports.put(updated);
+        return updated;
+      })
     );
     showToast('Апелляция отправлена на повторное рассмотрение старшим модератором');
   };
 
   const resolveAppeal = (reportId: string, approved: boolean) => {
     setReports((prev) =>
-      prev.map((r) =>
-        r.id === reportId
-          ? {
-              ...r,
-              appealStatus: approved ? 'approved' : 'rejected',
-              status: approved ? 'resolved_dismissed' : r.status,
-            }
-          : r
-      )
+      prev.map((r) => {
+        if (r.id !== reportId) return r;
+        const updated: SafetyReport = {
+          ...r,
+          appealStatus: approved ? 'approved' : 'rejected',
+          status: approved ? 'resolved_dismissed' : r.status,
+        };
+        void db.reports.put(updated);
+        return updated;
+      })
     );
     showToast(`Апелляция ${approved ? 'удовлетворена, контент восстановлен' : 'отклонена'}`);
   };
 
   // Parental Consent
   const submitParentConsent = (parentEmail: string) => {
-    setUser((prev) => ({
-      ...prev,
+    const nextUser: UserProfile = {
+      ...user,
       parentConsentVerified: true,
       parentEmail,
-    }));
+    };
+    setUser(nextUser);
+    void db.users.put(nextUser);
+    queueSync('PARENT_CONSENT', 'user', nextUser.id, { parentEmail });
     closeParentConsentModal();
     showToast('Согласие родителя успешно подтверждено! Все защитные функции активны.');
   };
 
   // Update DND
   const updateDND = (schedule: Partial<DNDSchedule>) => {
-    setDnd((prev) => ({ ...prev, ...schedule }));
+    const nextDnd: DNDSchedule = { ...dnd, ...schedule };
+    setDnd(nextDnd);
+    void db.dnd.put({ id: 'default', ...nextDnd });
+    queueSync('UPDATE_DND', 'dnd', 'default', nextDnd);
     showToast('Расписание тихих часов обновлено');
   };
 
   // Update User
   const updateUser = (updates: Partial<UserProfile>) => {
-    setUser((prev) => {
-      const updated = { ...prev, ...updates };
-      // Check if age updated < 14
-      if (updates.age && updates.age < 14 && !prev.parentConsentVerified) {
-        setActiveParentConsentModal(true);
-      }
-      return updated;
-    });
-    // Sync with members
-    if (updates.name || updates.avatar) {
-      setMembers((prev) =>
-        prev.map((m) =>
-          m.id === user.id
-            ? {
-                ...m,
-                name: updates.name ? `${updates.name} (Вы)` : m.name,
-                avatar: updates.avatar || m.avatar,
-              }
-            : m
-        )
-      );
+    const nextUser: UserProfile = { ...user, ...updates };
+    if (updates.age && updates.age < 14 && !user.parentConsentVerified) {
+      setActiveParentConsentModal(true);
     }
+    setUser(nextUser);
+    void db.users.put(nextUser);
+
+    if (updates.name || updates.avatar) {
+      const nextMembers = members.map((m) =>
+        m.id === user.id
+          ? {
+              ...m,
+              name: updates.name ? `${updates.name} (Вы)` : m.name,
+              avatar: updates.avatar || m.avatar,
+            }
+          : m
+      );
+      setMembers(nextMembers);
+      void db.circles.put({
+        id: 'default_circle',
+        name: circleName,
+        code: circleCode,
+        members: nextMembers,
+      });
+    }
+    queueSync('UPDATE_USER', 'user', nextUser.id, updates);
     showToast('Профиль сохранен');
   };
 
@@ -428,13 +597,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'Присоединился к Кругу 🌿',
       completedThisWeek: 0,
     };
-    setMembers((prev) => [...prev, newMember]);
-    setQuests((prev) =>
-      prev.map((q) => ({
-        ...q,
-        targetCount: Math.min(10, q.targetCount + 1),
-      }))
-    );
+    const nextMembers = [...members, newMember];
+    const nextQuests = quests.map((q) => ({
+      ...q,
+      targetCount: Math.min(10, q.targetCount + 1),
+    }));
+    setMembers(nextMembers);
+    setQuests(nextQuests);
+
+    void db.circles.put({
+      id: 'default_circle',
+      name: circleName,
+      code: circleCode,
+      members: nextMembers,
+    });
+    void db.quests.bulkPut(nextQuests);
+    queueSync('INVITE_MEMBER', 'circle', newId, newMember);
+
     showToast(`${name} добавлен в ваш Круг! Всего участников: ${members.length + 1}/10`);
     return true;
   };
@@ -443,80 +622,185 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const kickMember = (memberId: string) => {
     if (memberId === user.id) return;
     const memberName = members.find((m) => m.id === memberId)?.name || 'Участник';
-    setMembers((prev) => prev.filter((m) => m.id !== memberId));
-    setQuests((prev) =>
-      prev.map((q) => ({
+    const nextMembers = members.filter((m) => m.id !== memberId);
+    const nextQuests = quests.map((q) => {
+      const nextTarget = Math.max(1, q.targetCount - 1);
+      return {
         ...q,
-        targetCount: Math.max(1, q.targetCount - 1),
-        completedCount: Math.min(Math.max(1, q.targetCount - 1), q.completedCount),
-      }))
-    );
+        targetCount: nextTarget,
+        completedCount: Math.min(nextTarget, q.completedCount),
+      };
+    });
+
+    setMembers(nextMembers);
+    setQuests(nextQuests);
+
+    void db.circles.put({
+      id: 'default_circle',
+      name: circleName,
+      code: circleCode,
+      members: nextMembers,
+    });
+    void db.quests.bulkPut(nextQuests);
     showToast(`${memberName} исключен из Круга`);
   };
 
   // Leave circle
   const leaveCircle = () => {
-    setMembers((prev) => prev.filter((m) => m.id !== user.id));
+    const nextMembers = members.filter((m) => m.id !== user.id);
+    setMembers(nextMembers);
+    void db.circles.put({
+      id: 'default_circle',
+      name: circleName,
+      code: circleCode,
+      members: nextMembers,
+    });
     showToast('Вы покинули Круг');
   };
 
   // Transfer ownership
   const transferOwnership = (newOwnerId: string) => {
-    setMembers((prev) =>
-      prev.map((m) => ({
-        ...m,
-        isOwner: m.id === newOwnerId,
-      }))
-    );
-    setUser((prev) => ({
-      ...prev,
-      role: prev.id === newOwnerId ? 'creator' : 'member',
+    const nextMembers = members.map((m) => ({
+      ...m,
+      isOwner: m.id === newOwnerId,
     }));
+    const nextUser: UserProfile = {
+      ...user,
+      role: user.id === newOwnerId ? 'creator' : 'member',
+    };
+    setMembers(nextMembers);
+    setUser(nextUser);
+    void db.circles.put({
+      id: 'default_circle',
+      name: circleName,
+      code: circleCode,
+      members: nextMembers,
+    });
+    void db.users.put(nextUser);
     showToast('Права создателя Круга переданы');
   };
 
   // Session terminate
   const terminateSession = (sessionId: string) => {
     setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+    void db.sessions.delete(sessionId);
     showToast('Сессия на устройстве завершена');
   };
 
   const terminateAllOtherSessions = () => {
-    setSessions((prev) => prev.filter((s) => s.isCurrent));
+    const currentSessions = sessions.filter((s) => s.isCurrent);
+    setSessions(currentSessions);
+    void db.sessions.clear().then(() => db.sessions.bulkPut(currentSessions));
     showToast('Все другие активные устройства отключены');
   };
 
   // Notifications
   const markNotificationRead = (id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    setNotifications((prev) =>
+      prev.map((n) => {
+        if (n.id !== id) return n;
+        const next = { ...n, read: true };
+        void db.notifications.put(next);
+        return next;
+      })
+    );
   };
 
   const markAllNotificationsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    const nextList = notifications.map((n) => ({ ...n, read: true }));
+    setNotifications(nextList);
+    void db.notifications.bulkPut(nextList);
     showToast('Все уведомления прочитаны');
+  };
+
+  // Parent Dashboard actions
+  const verifyParentPin = async (pin: string): Promise<boolean> => {
+    const hashed = await hashPin(pin);
+    return hashed === parentSettings.pinHash;
+  };
+
+  const updateParentPin = async (newPin: string): Promise<boolean> => {
+    const hashed = await hashPin(newPin);
+    const updated: ParentSettings = {
+      ...parentSettings,
+      pinHash: hashed,
+      updatedAt: new Date().toISOString(),
+    };
+    setParentSettings(updated);
+    await db.parentSettings.put(updated);
+    queueSync('UPDATE_PARENT_PIN', 'parentSettings', updated.id, { updatedAt: updated.updatedAt });
+    showToast('Родительский PIN-код успешно обновлён');
+    return true;
+  };
+
+  const toggleAccountPause = async (paused: boolean): Promise<void> => {
+    const updated: ParentSettings = {
+      ...parentSettings,
+      paused,
+      updatedAt: new Date().toISOString(),
+    };
+    setParentSettings(updated);
+    await db.parentSettings.put(updated);
+    queueSync('TOGGLE_PAUSE', 'parentSettings', updated.id, { paused });
+    showToast(paused ? 'Аккаунт поставлен на паузу' : 'Аккаунт снова активен');
+  };
+
+  const addSafeZone = async (zone: Omit<SafeZone, 'id' | 'createdAt'>): Promise<void> => {
+    const newZone: SafeZone = {
+      ...zone,
+      id: `zone_${Date.now()}`,
+      createdAt: 'Добавлено родителем',
+    };
+    const updated: ParentSettings = {
+      ...parentSettings,
+      safeZones: [newZone, ...parentSettings.safeZones],
+      updatedAt: new Date().toISOString(),
+    };
+    setParentSettings(updated);
+    await db.parentSettings.put(updated);
+    queueSync('ADD_SAFE_ZONE', 'parentSettings', newZone.id, newZone);
+    showToast(`Безопасная зона «${newZone.name}» добавлена`);
+  };
+
+  const removeSafeZone = async (zoneId: string): Promise<void> => {
+    const updated: ParentSettings = {
+      ...parentSettings,
+      safeZones: parentSettings.safeZones.filter((z) => z.id !== zoneId),
+      updatedAt: new Date().toISOString(),
+    };
+    setParentSettings(updated);
+    await db.parentSettings.put(updated);
+    queueSync('REMOVE_SAFE_ZONE', 'parentSettings', zoneId, { zoneId });
+    showToast('Безопасная зона удалена');
   };
 
   // Reset to seed data
   const resetAllData = () => {
-    localStorage.clear();
-    setUser(INITIAL_USER);
-    setCircleName('Зелёный Патруль');
-    setCircleCode('GREEN-842');
-    setMembers(INITIAL_MEMBERS);
-    setQuests(INITIAL_QUESTS);
-    setSparksFeed(INITIAL_SPARKS_FEED);
-    setNotifications(INITIAL_NOTIFICATIONS);
-    setReports(INITIAL_REPORTS);
-    setSessions(INITIAL_SESSIONS);
-    setDnd(INITIAL_DND);
-    setActiveTab('quests');
-    setRoleMode('user');
-    showToast('Данные сброшены к начальному состоянию');
+    void resetDatabaseToSeed().then((state) => {
+      setUser(state.user);
+      setCircleName(state.circleName);
+      setCircleCode(state.circleCode);
+      setMembers(state.members);
+      setQuests(state.quests);
+      setSparksFeed(state.sparksFeed);
+      setNotifications(state.notifications);
+      setReports(state.reports);
+      setSessions(state.sessions);
+      setDnd(state.dnd);
+      setParentSettings(state.parentSettings);
+      setPendingSyncCount(0);
+      setActiveTab('quests');
+      setRoleMode('user');
+      showToast('База данных сброшена к начальному состоянию');
+    });
   };
 
   return (
     <AppContext.Provider
       value={{
+        isLoading,
+        loadError,
+        pendingSyncCount,
         user,
         circleName,
         circleCode,
@@ -527,6 +811,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         reports,
         sessions,
         dnd,
+        parentSettings,
         activeTab,
         roleMode,
         toast,
@@ -537,6 +822,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activePrivacyPolicyModal,
         activeInviteModal,
         activeModeratorModal,
+        activeParentDashboardModal,
 
         setActiveTab,
         setRoleMode,
@@ -555,8 +841,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         closeInviteModal,
         openModeratorModal,
         closeModeratorModal,
+        openParentDashboardModal,
+        closeParentDashboardModal,
 
         completeQuest,
+        addGeneratedQuest,
         sendSpark,
         submitReport,
         resolveReport,
@@ -574,6 +863,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         markNotificationRead,
         markAllNotificationsRead,
         resetAllData,
+
+        verifyParentPin,
+        updateParentPin,
+        toggleAccountPause,
+        addSafeZone,
+        removeSafeZone,
+        retryLoad: hydrateFromDb,
       }}
     >
       {children}

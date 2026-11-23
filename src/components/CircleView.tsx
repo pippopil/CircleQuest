@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { SparkMessage } from '../types';
 import { playSparkTone } from '../utils/audio';
 import {
   Users,
@@ -16,18 +17,14 @@ import {
   UserMinus,
   Crown,
   LogOut,
-  QrCode,
-  Copy,
-  Check,
-  Heart,
   Flag,
 } from 'lucide-react';
 
 export const CircleView: React.FC = () => {
   const {
     circleName,
-    circleCode,
     members,
+    quests,
     user,
     sparksFeed,
     openSparkModal,
@@ -36,7 +33,6 @@ export const CircleView: React.FC = () => {
     kickMember,
     leaveCircle,
     transferOwnership,
-    showToast,
   } = useApp();
 
   const [activeSubTab, setActiveSubTab] = useState<'members' | 'sparks'>('members');
@@ -44,14 +40,21 @@ export const CircleView: React.FC = () => {
 
   const isCreator = user.role === 'creator';
 
-  const handlePlaySpark = (soundType: any) => {
+  const totalWeeklyCompleted = quests.reduce((sum, q) => sum + q.completedCount, 0);
+  const totalWeeklyTarget = Math.max(1, quests.reduce((sum, q) => sum + q.targetCount, 0));
+  const weeklyContributionPercent = Math.min(
+    100,
+    Math.round((totalWeeklyCompleted / totalWeeklyTarget) * 100)
+  );
+
+  const handlePlaySpark = (soundType: SparkMessage['soundType']) => {
     playSparkTone(soundType);
   };
 
   return (
     <div className="space-y-4 pb-20">
       {/* Circle Banner */}
-      <div className="bg-[#FAF8F3] border border-[#5B8266]/20 rounded-2xl p-4 shadow-xs">
+      <div className="bg-[#FAF8F3] border border-[#5B8266]/20 rounded-2xl p-4 shadow-xs space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-[11px] text-stone-500 flex items-center gap-1.5 font-medium">
@@ -62,17 +65,35 @@ export const CircleView: React.FC = () => {
             </div>
             <h2 className="text-lg font-bold text-stone-900 mt-0.5">{circleName}</h2>
             <p className="text-xs text-stone-600 mt-1">
-              Пространство только для вас пятерых. Никаких чужих глаз и алгоритмов.
+              Пространство только для вашего круга. Никаких чужих глаз и алгоритмов.
             </p>
           </div>
 
           <button
             onClick={openInviteModal}
-            className="px-3 py-1.5 bg-[#486B52] hover:bg-[#3B5944] text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-transform active:scale-98 shrink-0"
+            className="min-h-[44px] px-3 py-1.5 bg-[#486B52] hover:bg-[#3B5944] text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-transform active:scale-98 shrink-0"
           >
             <UserPlus className="w-3.5 h-3.5" />
             <span>Позвать друга</span>
           </button>
+        </div>
+
+        {/* Weekly Contribution Progress Bar (No individual leaderboards) */}
+        <div className="pt-3 border-t border-stone-200/70 space-y-1.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-semibold text-stone-800">
+              Общий вклад Круга на этой неделе
+            </span>
+            <span className="font-bold text-[#324C3A] tabular-nums">
+              {totalWeeklyCompleted}/{totalWeeklyTarget} ({weeklyContributionPercent}%)
+            </span>
+          </div>
+          <div className="w-full bg-[#E5DFD3] rounded-full h-2.5 overflow-hidden">
+            <div
+              className="bg-[#486B52] h-full rounded-full transition-all duration-700 ease-out"
+              style={{ width: `${weeklyContributionPercent}%` }}
+            />
+          </div>
         </div>
       </div>
 

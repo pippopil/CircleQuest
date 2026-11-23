@@ -156,10 +156,15 @@ export const ModeratorModal: React.FC = () => {
                     className="p-3.5 bg-white rounded-xl border border-red-200/90 shadow-2xs space-y-2.5"
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="px-2 py-0.5 rounded-md bg-red-100 text-red-800 font-semibold text-[10px]">
                           {reasonLabels[rep.reason] || rep.reason}
                         </span>
+                        {rep.anonymous && (
+                          <span className="px-2 py-0.5 rounded-md bg-stone-200 text-stone-700 font-semibold text-[10px]">
+                            Анонимно
+                          </span>
+                        )}
                         <span className="text-stone-400">·</span>
                         <span className="text-stone-600 font-medium">{rep.targetAuthorName}</span>
                       </div>
